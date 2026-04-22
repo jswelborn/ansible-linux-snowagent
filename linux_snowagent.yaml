@@ -1,0 +1,128 @@
+---
+- name: Install and configure ServiceNow ACC on Linux
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - vars/snowagent.yaml
+
+  vars:
+    snowagent_policy_group: "{{ policy_group | default('staging') }}"
+    snowagent_config_file: "/etc/servicenow/agent-client-collector/acc.yaml"
+    snowagent_service_name: "acc"
+    snowagent_working_dir: "/tmp"
+
+    snowagent_environment: >-
+      {{
+        'staging'
+        if (snowagent_policy_group is regex('local|staging'))
+        else 'production'
+      }}
+
+    snowagent_mid_port: >-
+      {{
+        '8800'
+        if (snowagent_policy_group is regex('local|staging'))
+        else '443'
+      }}
+
+    snowagent_version: "{{ snowagent_acc_versions[snowagent_environment]['linux'] }}"
+
+    snowagent_package_suffix: >-
+      {{
+        '-ubuntu-1804_amd64.deb'
+        if ansible_os_family == 'Debian'
+        else '-x86_64.rpm'
+      }}
+
+    snowagent_package_name: >-
+      {{ snowagent_package_prefix }}{{ snowagent_version }}{{ snowagent_package_suffix }}
+
+    snowagent_package_url: >-
+      {{ snowagent_package_source }}{{ snowagent_package_name }}
+
+    snowagent_install_file: >-
+      {{ snowagent_working_dir }}/{{ snowagent_package_name }}
+
+    snowagent_mid_endpoints: >-
+      {{
+        snowagent_mid_servers.endpoints
+        | map('regex_replace', '^(.*)$', 'wss://\\1:' ~ snowagent_mid_port ~ '/ws/events')
+        | list
+      }}
+
+  handlers:
+    - name: restart acc
+      ansible.builtin.service:
+        name: "{{ snowagent_service_name }}"
+        state: restarted
+
+  tasks:
+    - name: Ensure ACC API key was provided by AAP credential
+      ansible.builtin.assert:
+        that:
+          - snowagent_acc_key is defined
+          - snowagent_acc_key | length > 0
+        fail_msg: "snowagent_acc_key was not provided by the attached AAP Azure Key Vault credential."
+      no_log: true
+
+    - name: End host for unsupported aarch64 systems
+      ansible.builtin.meta: end_host
+      when: ansible_architecture == "aarch64"
+
+    - name: Ensure servicenow sudoers entry exists
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        regexp: '^servicenow.*'
+        line: 'servicenow    ALL=(root)    NOPASSWD: /sbin/dmidecode,/sbin/ss'
+        state: present
+        validate: '/usr/sbin/visudo -cf %s'
+
+    - name: Download ACC package
+      ansible.builtin.get_url:
+        url: "{{ snowagent_package_url }}"
+        dest: "{{ snowagent_install_file }}"
+        mode: '0644'
+
+    - name: Install or upgrade ACC on RPM-based systems
+      ansible.builtin.dnf:
+        name: "{{ snowagent_install_file }}"
+        state: present
+        disable_gpg_check: true
+      when: ansible_os_family == "RedHat"
+      notify: restart acc
+
+    - name: Install or upgrade ACC on Debian-based systems
+      ansible.builtin.apt:
+        deb: "{{ snowagent_install_file }}"
+        state: present
+      when: ansible_os_family == "Debian"
+      notify: restart acc
+
+    - name: Check whether acc.yaml already contains encrypted api-key
+      ansible.builtin.shell: |
+        set -o pipefail
+        grep -Ei '^\s*api-key:\s*"(encrypted:)' {{ snowagent_config_file }}
+      args:
+        executable: /bin/bash
+      register: snowagent_encrypted_key_check
+      changed_when: false
+      failed_when: false
+
+    - name: Deploy ACC config when api-key is not already encrypted
+      ansible.builtin.template:
+        src: acc.yaml.j2
+        dest: "{{ snowagent_config_file }}"
+        owner: servicenow
+        group: servicenow
+        mode: '0600'
+      when: snowagent_encrypted_key_check.rc != 0
+      notify: restart acc
+      no_log: true
+
+    - name: Ensure ACC service is enabled and started
+      ansible.builtin.service:
+        name: "{{ snowagent_service_name }}"
+        enabled: true
+        state: started
