@@ -2,8 +2,8 @@
 # Agent Client Collector configuration
 
 backend-url:
-{% for url in snowagent_mid_endpoints %}
-  - "{{ url }}"
+{% for endpoint in snowagent_mid_servers.endpoints %}
+  - "wss://{{ endpoint }}:{{ snowagent_mid_port }}/ws/events"
 {% endfor %}
 
 ##
@@ -42,9 +42,6 @@ insecure-skip-tls-verify: true
 
 # Path to json file that contains the allow list of check or hook commands the agent can execute
 allow-list: /etc/servicenow/agent-client-collector/check-allow-list.json
-
-# Specify location of the SSL certificate file
-#trusted-ca-file: "/path/to/trusted-certificate-authorities.pem"
 
 # Specify if plugins should be verified, Default = true.
 #verify-plugin-signature: true

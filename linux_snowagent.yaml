@@ -45,13 +45,6 @@
     snowagent_install_file: >-
       {{ snowagent_working_dir }}/{{ snowagent_package_name }}
 
-    snowagent_mid_endpoints: >-
-      {{
-        snowagent_mid_servers.endpoints
-        | map('regex_replace', '^(.*)$', 'wss://\\1:' ~ snowagent_mid_port ~ '/ws/events')
-        | list
-      }}
-
   handlers:
     - name: restart acc
       ansible.builtin.service:
@@ -100,7 +93,7 @@
       when: ansible_os_family == "Debian"
       notify: restart acc
 
-    - name: Check whether acc.yaml already contains encrypted api-key
+    - name: Check whether acc.yml already contains encrypted api-key
       ansible.builtin.shell: |
         set -o pipefail
         grep -Ei '^\s*api-key:\s*"(encrypted:)' {{ snowagent_config_file }}
