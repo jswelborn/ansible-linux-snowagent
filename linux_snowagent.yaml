@@ -9,7 +9,7 @@
 
   vars:
     snowagent_policy_group: "{{ policy_group | default('staging') }}"
-    snowagent_config_file: "/etc/servicenow/agent-client-collector/acc.yaml"
+    snowagent_config_file: "/etc/servicenow/agent-client-collector/acc.yml"
     snowagent_service_name: "acc"
     snowagent_working_dir: "/tmp"
 
