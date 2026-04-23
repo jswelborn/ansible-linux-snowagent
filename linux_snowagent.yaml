@@ -103,6 +103,14 @@
       changed_when: false
       failed_when: false
 
+    - name: Ensure ACC config directory exists
+      ansible.builtin.file:
+        path: /etc/servicenow/agent-client-collector
+        state: directory
+        owner: servicenow
+        group: servicenow
+        mode: '0755'
+
     - name: Deploy ACC config when api-key is not already encrypted
       ansible.builtin.template:
         src: acc.yaml.j2
