@@ -1,0 +1,21 @@
+---
+- name: Check Snow Agent service
+  hosts: all
+  gather_facts: false
+
+  vars:
+    service_name: snowagent.service
+
+  tasks:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Fail if Snow Agent service is missing
+      ansible.builtin.fail:
+        msg: "Snow Agent service is missing"
+      when: service_name not in ansible_facts.services
+
+    - name: Fail if Snow Agent service is not running
+      ansible.builtin.fail:
+        msg: "Snow Agent service exists but is not running"
+      when: ansible_facts.services[service_name].state != "running"
